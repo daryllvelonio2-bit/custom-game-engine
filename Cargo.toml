@@ -1,0 +1,36 @@
+[package]
+name = "custom-game-engine"
+version = "0.1.0"
+edition = "2024"
+description = "A custom, low-end-optimized game engine targeting <=100 MB RAM for a full game."
+authors = ["Daryll <daryllvelonio2@gmail.com>"]
+license = "MIT"
+repository = "https://github.com/daryllvelonio2-bit/custom-game-engine"
+
+[lib]
+path = "src/lib.rs"
+
+[dependencies]
+# Windowing and input (lightweight, no GC)
+winit = "0.30"
+# Cross-platform graphics (Vulkan/Metal/D3D12/OpenGL) - fine-grained memory control
+wgpu = "22"
+# Math for transforms, camera, vertices
+glam = "0.25"
+# Lightweight data-oriented ECS
+hecs = "0.6"
+# Vertex buffer typing for wgpu
+bytemuck = { version = "1.15", features = ["derive"] }
+# Texture decoding (PNG/JPG)
+image = "0.25"
+# Simple audio playback
+rodio = "0.19"
+# Async executor for wgpu device creation
+pollster = "0.3"
+# Logging
+log = "0.4"
+
+[dev-dependencies]
+env_logger = "0.11"
+
+[workspace]
