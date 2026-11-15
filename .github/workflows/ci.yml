@@ -11,6 +11,14 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      # rodio (audio) needs ALSA headers on Linux; wgpu needs pkg-config.
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            libasound2-dev \
+            pkg-config \
+            libudev-dev
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
       - name: Cache cargo
