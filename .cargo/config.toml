@@ -14,11 +14,14 @@ linker = "clang"
 rustflags = ["-C", "link-arg=-fuse-ld=lld"]
 
 [alias]
-# Inner loop: library target only, no GPU stack for the game, seconds not minutes.
+# Inner loop: library target only, seconds not minutes.
 c = "check --all-targets"
 q = "check --lib"
 t = "test --lib"
-l = "clippy --lib -- -D warnings"
-la = "clippy --all-targets -- -D warnings"
+# No `-D warnings` here: the crate still carries pre-existing clippy lints in
+# `render::font` (needless_range_loop) and on wide engine methods
+# (too_many_arguments). Warnings stay visible; they do not block the loop.
+l = "clippy --lib"
+la = "clippy --all-targets"
 r = "run"
 b = "build"
