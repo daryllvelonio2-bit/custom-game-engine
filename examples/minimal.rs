@@ -12,12 +12,18 @@ impl App for MinimalGame {
     fn update(&mut self, ctx: &mut RunContext) {
         self.frames += 1;
         for key in &ctx.input.keys_just_pressed {
-            if matches!(key, winit::keyboard::Key::Named(winit::keyboard::NamedKey::Escape)) {
+            if matches!(
+                key,
+                winit::keyboard::Key::Named(winit::keyboard::NamedKey::Escape)
+            ) {
                 eprintln!("escape pressed");
             }
         }
         if self.frames % 60 == 0 {
-            eprintln!("frame {}  delta={:.3}  (engine running)", self.frames, ctx.delta);
+            eprintln!(
+                "frame {}  delta={:.3}  (engine running)",
+                self.frames, ctx.delta
+            );
         }
     }
 

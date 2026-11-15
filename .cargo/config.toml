@@ -1,0 +1,24 @@
+# Dev-loop speed settings. Nothing here changes what release builds produce.
+#
+# `custom-game` and `custom-game-engine` are two checkouts in the same parent
+# directory; both resolve this relative path (`Documents/GitHub/custom-target`)
+# to the SAME target dir, so the engine's dependency graph is compiled once and
+# reused by the game instead of living twice in two `target/` dirs.
+[build]
+target-dir = "../custom-target"
+
+# clang + lld links markedly faster than the default GNU ld on this machine.
+# Both are already installed. Swap in `-fuse-ld=mold` if mold is ever installed.
+[target.x86_64-unknown-linux-gnu]
+linker = "clang"
+rustflags = ["-C", "link-arg=-fuse-ld=lld"]
+
+[alias]
+# Inner loop: library target only, no GPU stack for the game, seconds not minutes.
+c = "check --all-targets"
+q = "check --lib"
+t = "test --lib"
+l = "clippy --lib -- -D warnings"
+la = "clippy --all-targets -- -D warnings"
+r = "run"
+b = "build"

@@ -13,18 +13,21 @@ path = "src/lib.rs"
 [dependencies]
 # Windowing and input (lightweight, no GC)
 winit = "0.30"
-# Cross-platform graphics (Vulkan/Metal/D3D12/OpenGL) - fine-grained memory control
-wgpu = "22"
+# Graphics API. Defaults pull in the DX12/Metal backend code and the SPIR-V/WGSL
+# *output* backends, none of which a Linux/Vulkan build compiles or runs.
+# `wgsl` stays because the engine's shaders are WGSL source.
+wgpu = { version = "22", default-features = false, features = ["wgsl"] }
 # Math for transforms, camera, vertices
 glam = "0.25"
 # Lightweight data-oriented ECS
 hecs = "0.6"
 # Vertex buffer typing for wgpu
 bytemuck = { version = "1.15", features = ["derive"] }
-# Texture decoding (PNG/JPG)
-image = "0.25"
-# Simple audio playback
-rodio = "0.19"
+# Texture decoding: PNG only. Defaults add jpeg/gif/tiff/webp/avif/exr + rayon.
+image = { version = "0.25", default-features = false, features = ["png"] }
+# Simple audio playback: WAV only. Defaults add flac/claxon, vorbis/lewton and
+# symphonia-mp3, which are the heaviest part of the audio graph.
+rodio = { version = "0.19", default-features = false, features = ["wav"] }
 # Async executor for wgpu device creation
 pollster = "0.3"
 # Logging
@@ -32,5 +35,16 @@ log = "0.4"
 
 [dev-dependencies]
 env_logger = "0.11"
+
+# Must stay byte-identical to the `[profile.dev]` table in `custom-game`: the
+# two repos share one target dir (see `.cargo/config.toml`), and a profile
+# mismatch makes cargo recompile the whole dependency graph when you switch
+# between them. When this crate is built through `custom-game`, cargo ignores
+# these settings and uses the root profile, which is the same by construction.
+[profile.dev]
+opt-level = 0
+debug = "line-tables-only"
+incremental = true
+split-debuginfo = "unpacked"
 
 [workspace]

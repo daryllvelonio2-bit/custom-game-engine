@@ -52,11 +52,25 @@ fn main() {
 }
 ```
 
+## Fast dev loop
+
+| Command | What it does |
+|---|---|
+| `cargo q` | `check --lib` |
+| `cargo t` | `test --lib` |
+| `cargo l` | `clippy --lib -D warnings` |
+| `cargo c` | `check --all-targets` |
+
+Dependencies are trimmed for compile speed (`image`: PNG only, `rodio`: WAV only,
+`wgpu`: no DX12/Metal/SPIR-V backends). This crate and `custom-game` share one target dir
+(`Documents/GitHub/custom-target`), so the graph is compiled once. Override with
+`CARGO_TARGET_DIR` if you ever need to.
+
 ## Verification
 
 ```bash
-cargo test        # memory budget + RSS reporting tests
-cargo check       # confirm the engine compiles clean
+cargo t           # memory budget + render/font tests
+cargo c           # confirm the engine (and its example) compiles clean
 ```
 
 The game repo (`custom-game`) depends on this engine and is verified separately to use

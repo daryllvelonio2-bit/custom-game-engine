@@ -20,7 +20,9 @@ impl Default for Ecs {
 
 impl Ecs {
     pub fn new() -> Self {
-        Self { world: World::new() }
+        Self {
+            world: World::new(),
+        }
     }
 
     pub fn spawn(&mut self, bundle: impl hecs::Bundle) -> Entity {

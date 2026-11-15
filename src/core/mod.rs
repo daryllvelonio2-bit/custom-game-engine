@@ -174,7 +174,9 @@ impl<A: App + 'static> ApplicationHandler for Engine<A> {
                 self.config.width,
                 self.config.height,
             ));
-        let window = event_loop.create_window(attrs).expect("failed to create window");
+        let window = event_loop
+            .create_window(attrs)
+            .expect("failed to create window");
 
         info!(
             "engine window created {}x{}",
@@ -369,7 +371,13 @@ impl<A: App + 'static> ApplicationHandler for Engine<A> {
         match renderer.render(&device, &queue, &surface) {
             Ok(()) => {}
             Err(wgpu::SurfaceError::Lost) => {
-                renderer.resize(&device, &queue, &surface, self.config.width, self.config.height);
+                renderer.resize(
+                    &device,
+                    &queue,
+                    &surface,
+                    self.config.width,
+                    self.config.height,
+                );
             }
             Err(wgpu::SurfaceError::OutOfMemory) => {
                 log::warn!("surface out of memory - engine exceeded GPU budget");
