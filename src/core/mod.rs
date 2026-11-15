@@ -20,11 +20,18 @@ pub struct InputState {
     pub keys_just_pressed: Vec<Key>,
     /// Keys currently held down (updated each frame from press/release events).
     pub keys_held: Vec<Key>,
+    /// Mouse position in physical pixels, origin at the top-left of the window.
+    pub mouse_position: (f32, f32),
+    /// Mouse buttons currently held down.
+    pub mouse_held: Vec<winit::event::MouseButton>,
+    /// Mouse buttons pressed during this frame.
+    pub mouse_just_pressed: Vec<winit::event::MouseButton>,
 }
 
 /// Context handed to the game each frame.
 pub struct RunContext<'a, 'b> {
     pub delta: f32,
+    pub rss_mb: f32,
     pub input: &'a InputState,
     pub device: &'a wgpu::Device,
     pub queue: &'a wgpu::Queue,
@@ -102,6 +109,7 @@ struct BuilderConfig {
     width: u32,
     height: u32,
     vsync: bool,
+    #[allow(dead_code)]
     memory_budget_mb: usize,
 }
 
@@ -116,7 +124,9 @@ pub struct Engine<A: App> {
     device: Option<wgpu::Device>,
     queue: Option<wgpu::Queue>,
     renderer: Option<Renderer>,
+    #[allow(dead_code)]
     assets: AssetLoader,
+    #[allow(dead_code)]
     audio: Audio,
     memory: MemoryBudget,
     input: InputState,
@@ -235,13 +245,13 @@ impl<A: App + 'static> ApplicationHandler for Engine<A> {
 
     fn window_event(
         &mut self,
-        _event_loop: &ActiveEventLoop,
+        event_loop: &ActiveEventLoop,
         _window_id: winit::window::WindowId,
         event: WindowEvent,
     ) {
         match event {
             WindowEvent::CloseRequested => {
-                // Exit cleanly; the run loop ends after this callback returns.
+                event_loop.exit();
             }
             WindowEvent::KeyboardInput { event, .. } => {
                 let key = event.logical_key.clone();
@@ -256,6 +266,23 @@ impl<A: App + 'static> ApplicationHandler for Engine<A> {
                     }
                 } else {
                     self.input.keys_held.retain(|k| k != &key);
+                }
+            }
+            WindowEvent::CursorMoved { position, .. } => {
+                self.input.mouse_position = (position.x as f32, position.y as f32);
+            }
+            WindowEvent::MouseInput { state, button, .. } => {
+                let is_pressed = state.is_pressed();
+                let was_held = self.input.mouse_held.contains(&button);
+                if is_pressed {
+                    if !was_held {
+                        self.input.mouse_just_pressed.push(button);
+                    }
+                    if !was_held {
+                        self.input.mouse_held.push(button);
+                    }
+                } else {
+                    self.input.mouse_held.retain(|b| b != &button);
                 }
             }
             WindowEvent::Resized(size) => {
@@ -320,11 +347,11 @@ impl<A: App + 'static> ApplicationHandler for Engine<A> {
             .clamp(0.0, 1.0);
         self.last_frame = Some(now);
 
-        // Reset per-frame input.
-        self.input.keys_just_pressed.clear();
+        let rss_mb = self.memory.tick();
 
         let mut ctx = RunContext {
             delta,
+            rss_mb,
             input: &self.input,
             device: &device,
             queue: &queue,
@@ -333,6 +360,10 @@ impl<A: App + 'static> ApplicationHandler for Engine<A> {
 
         self.app.update(&mut ctx);
         self.app.render(&mut ctx);
+
+        // Reset per-frame input after update and render have consumed it.
+        self.input.keys_just_pressed.clear();
+        self.input.mouse_just_pressed.clear();
 
         // Present.
         match renderer.render(&device, &queue, &surface) {
@@ -345,9 +376,6 @@ impl<A: App + 'static> ApplicationHandler for Engine<A> {
             }
             Err(e) => log::warn!("surface error: {:?}", e),
         }
-
-        // Report memory each frame for verification.
-        self.memory.tick();
 
         window.request_redraw();
 

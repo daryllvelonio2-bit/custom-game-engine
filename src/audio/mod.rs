@@ -4,6 +4,7 @@
 
 pub struct Audio {
     _stream: Option<rodio::OutputStream>,
+    #[allow(dead_code)]
     stream_handle: Option<rodio::OutputStreamHandle>,
     sink: Option<rodio::Sink>,
 }

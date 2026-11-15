@@ -13,3 +13,5 @@ pub mod memory;
 pub mod render;
 
 pub use core::{App, AppBuilder, Engine, InitContext, RunContext};
+pub use render::{Camera, GpuTexture};
+pub use wgpu;

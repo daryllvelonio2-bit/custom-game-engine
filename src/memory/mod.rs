@@ -10,25 +10,34 @@ pub struct MemoryBudget {
     budget_mb: usize,
     peak_mb: usize,
     frame: usize,
+    last_rss_mb: f32,
 }
 
 impl MemoryBudget {
     pub fn new(budget_mb: usize) -> Self {
+        let initial = current_rss_mb();
         Self {
             budget_mb,
-            peak_mb: 0,
+            peak_mb: initial as usize,
             frame: 0,
+            last_rss_mb: initial,
         }
     }
 
-    /// Call once per frame. Returns current RSS in MiB.
+    /// Call once per frame. Returns current RSS in MiB (sampled periodically to avoid heap churn).
     pub fn tick(&mut self) -> f32 {
         self.frame += 1;
-        let current = current_rss_mb();
-        if current as usize > self.peak_mb {
-            self.peak_mb = current as usize;
+        if self.frame == 1 || self.frame.is_multiple_of(30) {
+            self.last_rss_mb = current_rss_mb();
+            if self.last_rss_mb as usize > self.peak_mb {
+                self.peak_mb = self.last_rss_mb as usize;
+            }
         }
-        current
+        self.last_rss_mb
+    }
+
+    pub fn last_rss_mb(&self) -> f32 {
+        self.last_rss_mb
     }
 
     pub fn current_mb(&self) -> f32 {
