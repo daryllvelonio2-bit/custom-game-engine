@@ -12,4 +12,4 @@ pub mod ecs;
 pub mod memory;
 pub mod render;
 
-pub use core::{App, AppBuilder, Engine, RunContext};
+pub use core::{App, AppBuilder, Engine, InitContext, RunContext};

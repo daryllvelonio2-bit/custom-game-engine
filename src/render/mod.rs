@@ -1,18 +1,20 @@
-//! Renderer: minimal wgpu-based rendering with a fixed memory footprint.
+//! Renderer: minimal wgpu-based rendering with dynamic colored-rect batching.
 //!
-//! The renderer owns no GPU resources with dynamic lifetime; it holds pipelines,
-//! a vertex buffer, and surface configuration. Device and queue are passed in
-//! per call, which keeps borrowing simple.
+//! Games queue rectangles each frame via [`Renderer::add_rect`]; the renderer
+//! batches them into a single draw call. Fixed memory footprint.
 
 use wgpu::util::DeviceExt;
 
 /// Clear color used each frame (RGBA, 0..=1).
 pub const CLEAR_COLOR: wgpu::Color = wgpu::Color {
-    r: 0.1,
-    g: 0.1,
-    b: 0.12,
+    r: 0.05,
+    g: 0.05,
+    b: 0.08,
     a: 1.0,
 };
+
+/// Maximum number of rectangles that can be queued per frame.
+const MAX_RECTS: usize = 4096;
 
 #[repr(C)]
 #[derive(Copy, Clone, bytemuck::Pod, bytemuck::Zeroable)]
@@ -21,16 +23,16 @@ struct Vertex {
     color: [f32; 4],
 }
 
-const QUAD_VERTICES: [Vertex; 4] = [
-    Vertex { position: [-1.0, -1.0], color: [0.2, 0.6, 1.0, 1.0] },
-    Vertex { position: [1.0, -1.0], color: [0.2, 0.6, 1.0, 1.0] },
-    Vertex { position: [-1.0, 1.0], color: [0.2, 0.6, 1.0, 1.0] },
-    Vertex { position: [1.0, 1.0], color: [0.2, 0.6, 1.0, 1.0] },
-];
+/// A single rectangle queued for drawing, in clip space (-1..=1).
+#[derive(Clone, Copy)]
+pub struct Rect {
+    pub x: f32,
+    pub y: f32,
+    pub w: f32,
+    pub h: f32,
+    pub color: [f32; 4],
+}
 
-const QUAD_INDICES: [u16; 6] = [0, 1, 2, 2, 1, 3];
-
-/// Shader source (inline WGSL, no asset files needed for the engine core).
 const VS_SRC: &str = r#"
 struct VertexInput {
     @location(0) position: vec2<f32>,
@@ -63,7 +65,7 @@ pub struct Renderer {
     pipeline: Option<wgpu::RenderPipeline>,
     vertex_buffer: Option<wgpu::Buffer>,
     index_buffer: Option<wgpu::Buffer>,
-    index_count: u32,
+    rects: Vec<Rect>,
 }
 
 impl Renderer {
@@ -155,14 +157,23 @@ impl Renderer {
             multiview: None,
         });
 
-        let vertex_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-            label: Some("engine-quad-vertex-buffer"),
-            contents: bytemuck::cast_slice(&QUAD_VERTICES),
-            usage: wgpu::BufferUsages::VERTEX,
+        // Dynamic vertex buffer: updated every frame with queued rects.
+        let vertex_buffer = device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("engine-rect-vertex-buffer"),
+            size: (MAX_RECTS * 4 * std::mem::size_of::<Vertex>()) as wgpu::BufferAddress,
+            usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
+            mapped_at_creation: false,
         });
+
+        // Static index buffer: same quad index pattern repeated for every rect slot.
+        let mut indices = Vec::with_capacity(MAX_RECTS * 6);
+        for i in 0..MAX_RECTS {
+            let base = (i * 4) as u16;
+            indices.extend_from_slice(&[base, base + 1, base + 2, base + 2, base + 1, base + 3]);
+        }
         let index_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-            label: Some("engine-quad-index-buffer"),
-            contents: bytemuck::cast_slice(&QUAD_INDICES),
+            label: Some("engine-rect-index-buffer"),
+            contents: bytemuck::cast_slice(&indices),
             usage: wgpu::BufferUsages::INDEX,
         });
 
@@ -173,7 +184,16 @@ impl Renderer {
             pipeline: Some(pipeline),
             vertex_buffer: Some(vertex_buffer),
             index_buffer: Some(index_buffer),
-            index_count: QUAD_INDICES.len() as u32,
+            rects: Vec::with_capacity(MAX_RECTS),
+        }
+    }
+
+    /// Queue a rectangle for drawing this frame. Coordinates are in clip space
+    /// where (-1, -1) is bottom-left and (1, 1) is top-right. `(x, y)` is the
+    /// center of the rectangle.
+    pub fn add_rect(&mut self, x: f32, y: f32, w: f32, h: f32, color: [f32; 4]) {
+        if self.rects.len() < MAX_RECTS {
+            self.rects.push(Rect { x, y, w, h, color });
         }
     }
 
@@ -200,6 +220,21 @@ impl Renderer {
         queue: &wgpu::Queue,
         surface: &wgpu::Surface,
     ) -> Result<(), wgpu::SurfaceError> {
+        // Build vertices from queued rects.
+        let rect_count = self.rects.len();
+        let mut vertices = Vec::with_capacity(rect_count * 4);
+        for rect in &self.rects {
+            let x0 = rect.x - rect.w * 0.5;
+            let x1 = rect.x + rect.w * 0.5;
+            let y0 = rect.y - rect.h * 0.5;
+            let y1 = rect.y + rect.h * 0.5;
+            let c = rect.color;
+            vertices.push(Vertex { position: [x0, y0], color: c });
+            vertices.push(Vertex { position: [x1, y0], color: c });
+            vertices.push(Vertex { position: [x0, y1], color: c });
+            vertices.push(Vertex { position: [x1, y1], color: c });
+        }
+
         let frame = surface.get_current_texture()?;
         let view = frame
             .texture
@@ -208,6 +243,15 @@ impl Renderer {
         let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
             label: Some("engine-frame-encoder"),
         });
+
+        // Upload vertex data.
+        if !vertices.is_empty() {
+            queue.write_buffer(
+                self.vertex_buffer.as_ref().expect("vertex buffer"),
+                0,
+                bytemuck::cast_slice(&vertices),
+            );
+        }
 
         {
             let mut rpass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
@@ -227,16 +271,26 @@ impl Renderer {
 
             let pipeline = self.pipeline.as_ref().expect("pipeline not initialized");
             rpass.set_pipeline(pipeline);
-            rpass.set_vertex_buffer(0, self.vertex_buffer.as_ref().expect("vb").slice(..));
+            rpass.set_vertex_buffer(
+                0,
+                self.vertex_buffer.as_ref().expect("vb").slice(..),
+            );
             rpass.set_index_buffer(
                 self.index_buffer.as_ref().expect("ib").slice(..),
                 wgpu::IndexFormat::Uint16,
             );
-            rpass.draw_indexed(0..self.index_count, 0, 0..1);
+            let index_count = (rect_count * 6) as u32;
+            if index_count > 0 {
+                rpass.draw_indexed(0..index_count, 0, 0..1);
+            }
         }
 
         queue.submit(std::iter::once(encoder.finish()));
         frame.present();
+
+        // Reset for next frame.
+        self.rects.clear();
+
         Ok(())
     }
 }

@@ -18,6 +18,8 @@ use crate::render::Renderer;
 #[derive(Default, Clone)]
 pub struct InputState {
     pub keys_just_pressed: Vec<Key>,
+    /// Keys currently held down (updated each frame from press/release events).
+    pub keys_held: Vec<Key>,
 }
 
 /// Context handed to the game each frame.
@@ -242,8 +244,18 @@ impl<A: App + 'static> ApplicationHandler for Engine<A> {
                 // Exit cleanly; the run loop ends after this callback returns.
             }
             WindowEvent::KeyboardInput { event, .. } => {
-                if event.state.is_pressed() {
-                    self.input.keys_just_pressed.push(event.logical_key.clone());
+                let key = event.logical_key.clone();
+                let is_pressed = event.state.is_pressed();
+                let was_held = self.input.keys_held.contains(&key);
+                if is_pressed {
+                    if !was_held {
+                        self.input.keys_just_pressed.push(key.clone());
+                    }
+                    if !was_held {
+                        self.input.keys_held.push(key);
+                    }
+                } else {
+                    self.input.keys_held.retain(|k| k != &key);
                 }
             }
             WindowEvent::Resized(size) => {
